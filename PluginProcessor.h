@@ -14,20 +14,19 @@ public:
     void prepare(double sampleRate)
     {
         fs = sampleRate;
-
-        // Initialize filter coefficients
         updateCoefficients();
-        
         lowFilter.reset();
         highFilter.reset();
     }
 
-    void setParameters(float tone, float drive)
+    void setParameters(float toneSlider, float driveSlider)
     {
-        // tone modulation
-        float modulated = tone - 0.15f * (drive / 10.0f);
-        balance = juce::jlimit(0.0f, 1.0f, tone - 0.15f * (drive/10.0f));
+        // Keep tone slider linear 0–1
+        balance = juce::jlimit(0.0f, 1.0f, toneSlider);
 
+        // Drive subtly affects filter pivot and resonance
+        modulatedPivot = pivotFreq + driveSlider * 100.0f; // pivot 1 kHz → ~2 kHz at max drive
+        modulatedQ     = q + driveSlider * 0.05f;          // Q 0.707 → ~1.2 at max drive
 
         updateCoefficients();
     }
@@ -52,17 +51,23 @@ private:
     double fs = 44100.0;
     float balance = 0.5f;
 
+    // Base parameters
     const float pivotFreq = 1000.0f;
     const float q = 0.707f;
 
+    // Drive-modulated parameters
+    float modulatedPivot = pivotFreq;
+    float modulatedQ     = q;
+
     void updateCoefficients()
     {
-        // Create coefficient shared pointers
-        auto lowShelf  = juce::dsp::IIR::Coefficients<float>::makeLowShelf(fs, pivotFreq, q, 1.0f + (1.0f - balance) * 1.5f);
-        auto highShelf = juce::dsp::IIR::Coefficients<float>::makeHighShelf(fs, pivotFreq, q, 1.0f + balance * 1.5f);
+        auto lowShelf  = juce::dsp::IIR::Coefficients<float>::makeLowShelf(
+            fs, modulatedPivot, modulatedQ, 1.0f + (1.0f - balance) * 1.5f);
 
-        // Assign to filters via setCoefficients
-        lowFilter.coefficients = lowShelf;
+        auto highShelf = juce::dsp::IIR::Coefficients<float>::makeHighShelf(
+            fs, modulatedPivot, modulatedQ, 1.0f + balance * 1.5f);
+
+        lowFilter.coefficients  = lowShelf;
         highFilter.coefficients = highShelf;
     }
 };
@@ -101,52 +106,85 @@ private:
 class Distortion
 {
 public:
-    Distortion() : preGain(1.0f), cutoff(12000.0f), fs(44100.0) {}
-
-    void setPreGain(float g) { preGain = g; }
-    void setCutoff(float c)
+    Distortion() : preGain(1.0f), sliderValue(0.2f), fs(44100.0)
     {
-        cutoff = c;
         updateFilter();
     }
+
+    void setPreGain(float g) { preGain = g; }
+
+    // sliderValue expected 0.0 -> 1.0
+   void setCutoffSliderValue(float value)
+{
+    sliderValue = juce::jlimit(0.0f, 1.0f, value);
+
+    const float minHz = 100.0f;
+    const float maxHz = 8000.0f;
+    const float exponent = 0.7f; // gentle logarithmic response
+    cutoff = minHz * std::pow(maxHz / minHz, std::pow(sliderValue, exponent));
+
+    updateFilter();
+}
 
     void prepare(double sampleRate)
     {
         fs = sampleRate;
-        filter.reset();
+        for (auto& f : filters)
+            f.reset();
         juce::dsp::ProcessSpec spec { sampleRate, 512, 1 };
-        filter.prepare(spec);
+        for (auto& f : filters)
+            f.prepare(spec);
         updateFilter();
     }
 
-    float processSample(float input)
-    {
-        float x = input * preGain;
-        x = std::tanh(x); // soft clipping
-        return filter.processSample(x);
-    }
+float processSample(float input)
+{
+    // --- Pre soft clipping ---
+    float y = std::tanh(input * preGain);
+
+    // --- 4-pole lowpass (cutoff controlled by slider) ---
+    for (auto& f : filters)
+        y = f.processSample(y);
+
+    // --- Gentle one-pole post lowpass (~10 kHz) to reduce fizz ---
+    const float postCutoff = 10000.0f; // Hz
+    const float alpha = std::exp(-2.0f * juce::MathConstants<float>::pi * postCutoff / fs);
+    y = postPrev + (1.0f - alpha) * (y - postPrev);
+    postPrev = y;
+
+    // --- Final soft clipping for smooth output limiting ---
+    return std::tanh(y);
+}
 
 private:
     float preGain;
+    float sliderValue; // 0..1 slider input
     float cutoff;
     double fs;
+    float postPrev = 0.0f;
 
-    juce::dsp::IIR::Filter<float> filter;
+    // 2x 2-pole lowpass for 4-pole response
+    std::array<juce::dsp::IIR::Filter<float>, 2> filters;
 
     void updateFilter()
     {
         const float Q = 0.707f;
         auto coeffs = juce::dsp::IIR::Coefficients<float>::makeLowPass(fs, cutoff, Q);
-        filter.coefficients = coeffs;
+        for (auto& f : filters)
+            f.coefficients = coeffs;
     }
 };
+
+
 
 class Wavefolder
 {
 public:
     Wavefolder() : depth(0.0f) {}
 
-    void setDepth(float d) { depth = juce::jlimit(0.0f, 1.0f, d); }
+    void setDepth(float d) {
+        depth = juce::jlimit(0.0f, 1.0f, std::pow(d, 1.5f));
+    }
 
     float processSample(float input)
     {
@@ -160,6 +198,78 @@ public:
 private:
     float depth;
 };
+
+class SimpleCompressor
+{
+public:
+    SimpleCompressor()
+        : threshold(-3.0f),   // -3 dB, gentle limiting
+          ratio(2.0f),        // mild compression
+          knee(2.0f),         // small soft knee
+          attackTime(0.005f), // 5 ms fast attack
+          releaseTime(0.05f), // 50 ms release
+          sampleRate(44100.0),
+          envelope(0.0f)
+    {}
+
+    void prepare(double fs)
+    {
+        sampleRate = fs;
+        envelope = 0.0f;
+
+        attackCoeff  = std::exp(-1.0f / (attackTime * sampleRate));
+        releaseCoeff = std::exp(-1.0f / (releaseTime * sampleRate));
+    }
+
+    float processSample(float input)
+    {
+        // Simple one-pole envelope follower
+        float level = std::fabs(input);
+        if (level > envelope)
+            envelope = attackCoeff * (envelope - level) + level;
+        else
+            envelope = releaseCoeff * (envelope - level) + level;
+
+        // Convert to dB
+        float levelDb = linearToDb(envelope);
+
+        // Soft-knee gain reduction
+        float gainDb = 0.0f;
+        float lowerKnee = threshold - knee/2.0f;
+        float upperKnee = threshold + knee/2.0f;
+
+        if (levelDb > upperKnee)
+        {
+            gainDb = threshold + (levelDb - threshold)/ratio - levelDb;
+        }
+        else if (levelDb > lowerKnee)
+        {
+            float x = (levelDb - lowerKnee) / knee; // 0 → 1
+            float smooth = x*x*(3.0f - 2.0f*x);    // S-curve
+            gainDb = smooth * (threshold + (levelDb - threshold)/ratio - levelDb);
+        }
+
+        float gain = dbToLinear(gainDb);
+        return input * gain;
+    }
+
+private:
+    float threshold;
+    float ratio;
+    float knee;
+    float attackTime;
+    float releaseTime;
+
+    double sampleRate;
+    float envelope;
+    float attackCoeff;
+    float releaseCoeff;
+
+    // Lightweight conversions
+    static float dbToLinear(float db)  { return std::pow(10.0f, db / 20.0f); }
+    static float linearToDb(float lin) { return 20.0f * std::log10(std::max(lin, 1e-20f)); }
+};
+
 
 //==============================================================================
 
@@ -215,6 +325,7 @@ private:
     Distortion dist;
     Wavefolder fold;
     ToneProcessor toneProcessor;
+    SimpleCompressor simpleComp;
 
     
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();

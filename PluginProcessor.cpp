@@ -7,10 +7,52 @@ juce::AudioProcessorValueTreeState::ParameterLayout DREKAVACAudioProcessor::crea
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>("drive", "Drive", 0.0f, 10.0f, 1.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>("tone", "Tone", 0.0f, 1.0f, 0.5f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+    "tone", "Tone",
+    juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f,
+    juce::String(), juce::AudioProcessorParameter::genericParameter,
+    [](float value, int) {
+        return juce::String((int)(value * 100.0f)) + "%"; // display as 0–100%
+    },
+    [](const juce::String& text) {
+        return text.upToFirstOccurrenceOf("%", false, false).getFloatValue() / 100.0f;
+    }
+));
     params.push_back(std::make_unique<juce::AudioParameterFloat>("distortion", "Distortion", 0.0f, 10.0f, 1.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>("cutoff", "Cutoff", 100.0f, 20000.0f, 12000.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>("fold", "Fold", 0.0f, 5.0f, 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+    "cutoff", "Cutoff",
+    juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f,
+    juce::String(), juce::AudioProcessorParameter::genericParameter,
+    // Display function (shows Hz)
+    [](float value, int) {
+        const float minHz = 100.0f, maxHz = 8000.0f;
+        const float exponent = 0.7f;
+        float hz = minHz * std::pow(maxHz / minHz, std::pow(value, exponent));
+        return juce::String((int)hz) + " Hz";
+    },
+    // Text-to-value (parsing typed-in Hz values)
+    [](const juce::String& text) {
+        const float minHz = 100.0f, maxHz = 8000.0f;
+        const float exponent = 0.7f;
+        float hz = text.upToFirstOccurrenceOf("Hz", false, false).getFloatValue();
+        float norm = std::pow(std::log(hz / minHz) / std::log(maxHz / minHz), 1.0f / exponent);
+        return juce::jlimit(0.0f, 1.0f, norm);
+    }
+));
+
+    
+params.push_back(std::make_unique<juce::AudioParameterFloat>(
+    "fold", "Fold",
+    juce::NormalisableRange<float>(0.0f, 1.0f), 0.2f,
+    juce::String(), juce::AudioProcessorParameter::genericParameter,
+    [](float value, int){
+        return juce::String((int)(value * 100.0f)) + "%"; 
+    },
+    [](const juce::String& text){
+        return text.upToFirstOccurrenceOf("%", false, false).getFloatValue() / 100.0f; }
+));
+
+
 
     // Flavor parameter (internal 0–1, displayed as -100% → +100%)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -99,9 +141,11 @@ void DREKAVACAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     overdrive.setTone(0.5f);
 
     dist.setPreGain(1.0f);
-    dist.setCutoff(12000.0f);
+    dist.setCutoffSliderValue(0.5f);
 
     fold.setDepth(0.0f);
+    simpleComp.prepare(getSampleRate());
+
 }
 
 
@@ -150,7 +194,7 @@ void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     float drive      = *parameters.getRawParameterValue("drive");
     float tone       = *parameters.getRawParameterValue("tone");
     float distortion = *parameters.getRawParameterValue("distortion");
-    float cutoff     = *parameters.getRawParameterValue("cutoff");
+    float cutoff  = *parameters.getRawParameterValue("cutoff");   // 0..1 slider
     float foldDepth  = *parameters.getRawParameterValue("fold");
     float flavor     = *parameters.getRawParameterValue("flavor");
     float outputGain = *parameters.getRawParameterValue("output");
@@ -161,13 +205,12 @@ void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     overdrive.setTone(tone);
     toneProcessor.setParameters(tone, drive);
     dist.setPreGain(std::max(0.0f, distortion));
-    dist.setCutoff(std::max(20.0f, cutoff));
+    dist.setCutoffSliderValue(cutoff); // <-- NEW LOGARITHMIC MAPPING
     fold.setDepth(foldDepth);
 
     float oversampledRate = static_cast<float>(getSampleRate()) * oversampler.getOversamplingFactor();
     const float preGain = 0.6f;
 
-    // --- Process oversampled buffer ---
     int numSamples = oversampledBlock.getNumSamples();
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
@@ -202,6 +245,8 @@ void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     // --- Downsample ---
     oversampler.processSamplesDown(block);
 }
+
+
 
 //==============================================================================
 

@@ -37,7 +37,21 @@ DREKAVACAudioProcessorEditor::DREKAVACAudioProcessorEditor(DREKAVACAudioProcesso
     setupSlider(toneSlider, toneLabel, "tone", "Tone", toneAttachment);
     setupSlider(distortionSlider, distortionLabel, "distortion", "Distortion", distortionAttachment);
     setupSlider(cutoffSlider, cutoffLabel, "cutoff", "Cutoff", cutoffAttachment);
-    setupSlider(foldSlider, foldLabel, "fold", "Fold", foldAttachment);
+    // Setup Fold slider separately to show 0–100%
+foldSlider.setLookAndFeel(customLAF.get());
+foldSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+foldSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 20);
+foldSlider.setRange(0.0, 100.0, 1.0);       // display 0–100%
+addAndMakeVisible(foldSlider);
+
+foldLabel.setText("Fold", juce::dontSendNotification);
+foldLabel.setJustificationType(juce::Justification::centred);
+foldLabel.setFont(juce::Font("Gajraj One", 18.0f, juce::Font::plain));
+addAndMakeVisible(foldLabel);
+
+// Attach slider to parameter
+foldAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+    audioProcessor.parameters, "fold", foldSlider);
     setupSlider(flavorSlider, flavorLabel, "flavor", "Flavor", flavorAttachment);
     setupSlider(outputSlider, outputLabel, "output", "Output", outputAttachment);
     setupSlider(drywetSlider, drywetLabel, "drywet", "Dry/Wet", drywetAttachment);
