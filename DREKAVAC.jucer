@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="aGd6qH" name="DREKAVAC" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" companyName="DISTEK"
+              version="1.0.1" pluginName="DREKAVAC" pluginManufacturer="DISTEK"
+              pluginManufacturerCode="Dstk" pluginDesc="Distortion multi-effect"
+              pluginCode="Drek" pluginVST3Category="Distortion,Fx" pluginAAXCategory="8192"
+              pluginFormats="buildStandalone,buildVST3">
+  <MAINGROUP id="p3Cvef" name="DREKAVAC">
+    <GROUP id="{9B486519-CBE2-7104-CC78-A63DE3C8BEA4}" name="Source">
+      <FILE id="IlWJiX" name="Background.png" compile="0" resource="1" file="../../../../../Downloads/Background.png"/>
+      <FILE id="lcb9tj" name="GajrajOne-Regular.ttf" compile="0" resource="1"
+            file="../../../../../Downloads/Gajraj_One/GajrajOne-Regular.ttf"/>
+      <FILE id="of1s2i" name="PluginProcessor.cpp" compile="1" resource="0"
+            file="Source/PluginProcessor.cpp"/>
+      <FILE id="p7yIeJ" name="PluginProcessor.h" compile="0" resource="0"
+            file="Source/PluginProcessor.h"/>
+      <FILE id="Iwb0Hd" name="PluginEditor.cpp" compile="1" resource="0"
+            file="Source/PluginEditor.cpp"/>
+      <FILE id="NU1wqC" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_dsp" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <EXPORTFORMATS>
+    <VS2022 targetFolder="Builds/VisualStudio2022">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="DREKAVAC"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="DREKAVAC"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_dsp" path="../../../../../Downloads/juce-8.0.7-windows/JUCE/modules"/>
+      </MODULEPATHS>
+    </VS2022>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
