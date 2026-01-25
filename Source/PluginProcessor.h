@@ -1,10 +1,9 @@
-﻿#pragma once
+#pragma once
 
 #include <JuceHeader.h>
 #include <juce_dsp/juce_dsp.h>
 
 //==============================================================================
-// Simple DSP helper classes (kept small and copy-paste friendly)
 
 //==============================================================================
 
@@ -25,8 +24,8 @@ public:
         balance = juce::jlimit(0.0f, 1.0f, toneSlider);
 
         // Drive subtly affects filter pivot and resonance
-        modulatedPivot = pivotFreq + driveSlider * 100.0f; // pivot 1 kHz → ~2 kHz at max drive
-        modulatedQ = q + driveSlider * 0.05f;          // Q 0.707 → ~1.2 at max drive
+        modulatedPivot = pivotFreq + driveSlider * 100.0f; // pivot 1 kHz -> ~2 kHz at max drive
+        modulatedQ = q + driveSlider * 0.05f;          // Q 0.707 -> ~1.2 at max drive
 
         updateCoefficients();
     }
@@ -88,7 +87,7 @@ public:
         // soft clipping
         float y = std::tanh(x);
 
-        // simple one-pole lowpass for 'tone' (tone=0 darker, tone=1 brighter)
+        // simple one-pole lowpass for tone (tone=0 darker, tone=1 brighter)
         float cutoff = 200.0f + tone * 8000.0f; // 200..8200 Hz
         float RC = 1.0f / (2.0f * juce::MathConstants<float>::pi * cutoff);
         float dt = 1.0f / (float)sampleRate;
@@ -189,7 +188,7 @@ public:
     float processSample(float input)
     {
         // Scale input with depth to get stronger folding at higher depths
-        float scaled = input * (1.0f + depth * 9.0f); // 1x → 10x
+        float scaled = input * (1.0f + depth * 9.0f); // 1x -> 10x
         float folded = std::sin(scaled * juce::MathConstants<float>::halfPi);
         folded = std::tanh(folded);
         return input * (1.0f - depth) + folded * depth;
@@ -202,51 +201,38 @@ private:
 class SimpleCompressor
 {
 public:
-    SimpleCompressor()
-        : threshold(-3.0f),   // -3 dB, gentle limiting
-        ratio(2.0f),        // mild compression
-        knee(2.0f),         // small soft knee
-        attackTime(0.005f), // 5 ms fast attack
-        releaseTime(0.05f), // 50 ms release
-        sampleRate(44100.0),
-        envelope(0.0f)
-    {
-    }
-
-    void prepare(double fs)
+    void prepare(double fs, int numChannels)
     {
         sampleRate = fs;
-        envelope = 0.0f;
+        envelopes.assign(numChannels, 0.0f);
 
         attackCoeff = std::exp(-1.0f / (attackTime * sampleRate));
         releaseCoeff = std::exp(-1.0f / (releaseTime * sampleRate));
     }
 
-    float processSample(float input)
+    float processSample(float input, int channel)
     {
-        // Simple one-pole envelope follower
         float level = std::fabs(input);
-        if (level > envelope)
-            envelope = attackCoeff * (envelope - level) + level;
+
+        // envelope per channel
+        if (level > envelopes[channel])
+            envelopes[channel] = attackCoeff * (envelopes[channel] - level) + level;
         else
-            envelope = releaseCoeff * (envelope - level) + level;
+            envelopes[channel] = releaseCoeff * (envelopes[channel] - level) + level;
 
-        // Convert to dB
-        float levelDb = linearToDb(envelope);
+        float levelDb = linearToDb(envelopes[channel]);
 
-        // Soft-knee gain reduction
+        // soft-knee gain reduction
         float gainDb = 0.0f;
         float lowerKnee = threshold - knee / 2.0f;
         float upperKnee = threshold + knee / 2.0f;
 
         if (levelDb > upperKnee)
-        {
             gainDb = threshold + (levelDb - threshold) / ratio - levelDb;
-        }
         else if (levelDb > lowerKnee)
         {
-            float x = (levelDb - lowerKnee) / knee; // 0 → 1
-            float smooth = x * x * (3.0f - 2.0f * x);    // S-curve
+            float x = (levelDb - lowerKnee) / knee;
+            float smooth = x * x * (3.0f - 2.0f * x);
             gainDb = smooth * (threshold + (levelDb - threshold) / ratio - levelDb);
         }
 
@@ -255,21 +241,57 @@ public:
     }
 
 private:
-    float threshold;
-    float ratio;
-    float knee;
-    float attackTime;
-    float releaseTime;
+    float threshold = -3.0f;
+    float ratio = 2.0f;
+    float knee = 2.0f;
+    float attackTime = 0.005f;
+    float releaseTime = 0.05f;
 
-    double sampleRate;
-    float envelope;
+    double sampleRate = 44100.0;
+    std::vector<float> envelopes; // one per channel
     float attackCoeff;
     float releaseCoeff;
 
-    // Lightweight conversions
     static float dbToLinear(float db) { return std::pow(10.0f, db / 20.0f); }
     static float linearToDb(float lin) { return 20.0f * std::log10(std::max(lin, 1e-20f)); }
 };
+
+class DCBlocker
+{
+public:
+    DCBlocker() : R(0.995f) {} // default, can be set in prepare
+    void prepare(double sampleRate, int numChannels)
+    {
+        fs = sampleRate;
+        prevX.assign(numChannels, 0.0f);
+        prevY.assign(numChannels, 0.0f);
+
+        // Calculate coefficient for ~10 Hz cutoff
+        float fc = 10.0f; 
+        R = 1.0f - 2.0f * juce::MathConstants<float>::pi * fc / (float)fs;
+    }
+
+    float processSample(float x, int channel)
+    {
+        float y = x - prevX[channel] + R * prevY[channel];
+        prevX[channel] = x;
+        prevY[channel] = y;
+        return y;
+    }
+
+    void reset()
+    {
+        std::fill(prevX.begin(), prevX.end(), 0.0f);
+        std::fill(prevY.begin(), prevY.end(), 0.0f);
+    }
+
+private:
+    double fs;
+    float R;
+    std::vector<float> prevX;
+    std::vector<float> prevY;
+};
+
 
 
 //==============================================================================
@@ -327,6 +349,18 @@ private:
     Wavefolder fold;
     ToneProcessor toneProcessor;
     SimpleCompressor simpleComp;
+    DCBlocker dcBlocker;
+    
+    // ADD SMOOTHED PARAMETERS HERE
+    juce::SmoothedValue<float> driveSmoothed;
+    juce::SmoothedValue<float> toneSmoothed;
+    juce::SmoothedValue<float> distortionSmoothed;
+    juce::SmoothedValue<float> cutoffSmoothed;
+    juce::SmoothedValue<float> foldSmoothed;
+    juce::SmoothedValue<float> flavorSmoothed;
+    juce::SmoothedValue<float> outputSmoothed;
+    juce::SmoothedValue<float> drywetSmoothed;
+    // ------------------------------
 
 
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
