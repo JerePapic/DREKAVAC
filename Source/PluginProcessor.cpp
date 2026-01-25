@@ -111,7 +111,8 @@ DREKAVACAudioProcessor::DREKAVACAudioProcessor()
         .withOutput("Output", juce::AudioChannelSet::stereo(), true)
 #endif
     ),
-    parameters(*this, nullptr, juce::Identifier("DREKAVAC_PARAMETERS"), createParameterLayout())
+    parameters(*this, nullptr, juce::Identifier("DREKAVAC_PARAMETERS"), createParameterLayout()),
+    oversampler(2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true)  // <-- CHANGED: maximally flat phase
 {
 }
 
@@ -136,7 +137,7 @@ void DREKAVACAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     // Prepare DSP modules with correct sample rates
     toneProcessor.prepare(sampleRate); // ToneProcessor works at original rate
     dist.prepare(oversampledRate);     // Distortion works at oversampled rate
-    simpleComp.prepare(sampleRate);    // Compressor works at original rate
+    simpleComp.prepare(sampleRate, getTotalNumInputChannels());    // Compressor works at original rate
 
     // Reset other DSP modules with default values
     overdrive.setDrive(1.0f);
@@ -146,11 +147,38 @@ void DREKAVACAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     dist.setCutoffSliderValue(0.5f);
 
     fold.setDepth(0.0f);
+    
+    dcBlocker.prepare(sampleRate, getTotalNumInputChannels());
+    simpleComp.prepare(sampleRate, getTotalNumInputChannels());
+    
+    auto smoothingTime = 0.02; // 20ms smoothing for all
+
+    driveSmoothed.reset(sampleRate, smoothingTime);
+    toneSmoothed.reset(sampleRate, smoothingTime);
+    distortionSmoothed.reset(sampleRate, smoothingTime);
+    cutoffSmoothed.reset(sampleRate, smoothingTime);
+    foldSmoothed.reset(sampleRate, smoothingTime);
+    flavorSmoothed.reset(sampleRate, smoothingTime);
+    outputSmoothed.reset(sampleRate, smoothingTime);
+    drywetSmoothed.reset(sampleRate, smoothingTime);
+
+    // Initialize current value
+    driveSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("drive"));
+    toneSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("tone"));
+    distortionSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("distortion"));
+    cutoffSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("cutoff"));
+    foldSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("fold"));
+    flavorSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("flavor"));
+    outputSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("output"));
+    drywetSmoothed.setCurrentAndTargetValue(*parameters.getRawParameterValue("drywet"));
+
 }
 
 void DREKAVACAudioProcessor::releaseResources()
 {
     oversampler.reset();
+    dcBlocker.reset();
+    simpleComp.prepare(getSampleRate(), getTotalNumInputChannels());
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -175,79 +203,133 @@ bool DREKAVACAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
 #endif
 
 //==============================================================================
-
-void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
+                                         juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    auto totalNumInputChannels = getTotalNumInputChannels();
-    auto totalNumOutputChannels = getTotalNumOutputChannels();
+    const int totalNumInputChannels  = getTotalNumInputChannels();
+    const int totalNumOutputChannels = getTotalNumOutputChannels();
 
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear(i, 0, buffer.getNumSamples());
+    for (int ch = totalNumInputChannels; ch < totalNumOutputChannels; ++ch)
+        buffer.clear(ch, 0, buffer.getNumSamples());
 
-    // --- Upsample ---
+    //==================================================
+    // STEP 1: Update smoothed targets (once per block)
+    //==================================================
+    driveSmoothed.setTargetValue(*parameters.getRawParameterValue("drive"));
+    toneSmoothed.setTargetValue(*parameters.getRawParameterValue("tone"));
+    distortionSmoothed.setTargetValue(*parameters.getRawParameterValue("distortion"));
+    cutoffSmoothed.setTargetValue(*parameters.getRawParameterValue("cutoff"));
+    foldSmoothed.setTargetValue(*parameters.getRawParameterValue("fold"));
+    flavorSmoothed.setTargetValue(*parameters.getRawParameterValue("flavor"));
+    outputSmoothed.setTargetValue(*parameters.getRawParameterValue("output"));
+    drywetSmoothed.setTargetValue(*parameters.getRawParameterValue("drywet"));
+
+    //==================================================
+    // STEP 2: CONTROL-RATE DSP UPDATES (ONCE PER BLOCK)
+    //==================================================
+    const float driveCtrl      = driveSmoothed.getTargetValue();
+    const float toneCtrl       = toneSmoothed.getTargetValue();
+    const float distortionCtrl = distortionSmoothed.getTargetValue();
+    const float cutoffCtrl     = cutoffSmoothed.getTargetValue();
+    const float foldCtrl       = foldSmoothed.getTargetValue();
+
+    // Update all coefficients ONCE per block (not per sample!)
+    overdrive.setDrive(driveCtrl);
+    overdrive.setTone(toneCtrl);
+    dist.setPreGain(std::max(0.0f, distortionCtrl));
+    dist.setCutoffSliderValue(cutoffCtrl);  // This updates filter coefficients
+    fold.setDepth(foldCtrl);
+    toneProcessor.setParameters(toneCtrl, driveCtrl); // Add this if needed
+
+    //==================================================
+    // STEP 3: OVERSAMPLE
+    //==================================================
     auto block = juce::dsp::AudioBlock<float>(buffer);
-    auto oversampledBlock = oversampler.processSamplesUp(block);
+    auto osBlock = oversampler.processSamplesUp(block);
 
-    // --- Get parameter values ---
-    float drive = *parameters.getRawParameterValue("drive");
-    float tone = *parameters.getRawParameterValue("tone");
-    float distortion = *parameters.getRawParameterValue("distortion");
-    float cutoff = *parameters.getRawParameterValue("cutoff");   // 0..1 slider
-    float foldDepth = *parameters.getRawParameterValue("fold");
-    float flavor = *parameters.getRawParameterValue("flavor");
-    float outputGain = *parameters.getRawParameterValue("output");
-    float drywet = *parameters.getRawParameterValue("drywet");
+    const int numSamples = osBlock.getNumSamples();
+    const double osRate  = getSampleRate() * oversampler.getOversamplingFactor();
+    const float preGain  = 0.6f;
 
-    // --- Pre-calculate expensive operations ---
-    float f = std::sin(flavor * juce::MathConstants<float>::halfPi);
-    float w = std::sqrt(drywet);
-
-    // --- Update DSP modules ---
-    overdrive.setDrive(drive);
-    overdrive.setTone(tone);
-    toneProcessor.setParameters(tone, drive);
-    dist.setPreGain(std::max(0.0f, distortion));
-    dist.setCutoffSliderValue(cutoff);
-    fold.setDepth(foldDepth);
-
-    // Use consistent oversampled rate
-    double oversampledRate = getSampleRate() * oversampler.getOversamplingFactor();
-    const float preGain = 0.6f;
-
-    int numSamples = oversampledBlock.getNumSamples();
-
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    //==================================================
+    // STEP 4: AUDIO-RATE PROCESSING
+    //==================================================
+    for (int ch = 0; ch < totalNumInputChannels; ++ch)
     {
-        auto* channelData = oversampledBlock.getChannelPointer(channel);
+        float* channelData = osBlock.getChannelPointer(ch);
 
-        for (int sample = 0; sample < numSamples; ++sample)
+        for (int i = 0; i < numSamples; ++i)
         {
-            float inputSample = channelData[sample];
-            float scaledInput = inputSample * preGain;
+            const float input = channelData[i];
 
-            float odSample = overdrive.processSample(scaledInput, oversampledRate);
-            float distSample = dist.processSample(odSample);
-            float foldSample = fold.processSample(odSample);
+            // Smoothed values SAFE per-sample
+            const float flavor   = flavorSmoothed.getNextValue();
+            const float output   = outputSmoothed.getNextValue();
+            const float dryWet   = drywetSmoothed.getNextValue();
 
-            float parallel = odSample + distSample * (1.0f - f) + foldSample * f;
+            const float flavorMix = std::sin(flavor * juce::MathConstants<float>::halfPi);
+            const float wetMix    = std::sqrt(dryWet);
 
-            // --- Tone filtering ---
-            float filtered = toneProcessor.processSample(parallel);
+            // --- Distortion chain (oversampled) ---
+            float x = input * preGain;
+            float od   = overdrive.processSample(x, osRate);
+            float distSample = dist.processSample(od);
+            float foldS = fold.processSample(od);
 
-            float mixed = inputSample * (1.0f - w) + filtered * w;
+            float parallel = od
+                           + distSample  * (1.0f - flavorMix)
+                           + foldS * flavorMix;
 
-            mixed *= outputGain;
+            // --- Downstream (still oversampled) ---
+            float y = std::tanh(parallel);
+
+            // --- Mix ---
+            float mixed = input * (1.0f - wetMix) + y * wetMix;
+
+            // --- DC blocker (per channel) ---
+            mixed = dcBlocker.processSample(mixed, ch);
+
+            // --- Output gain ---
+            mixed *= output;
+
+            // --- Soft safety clip ---
             mixed = std::tanh(mixed);
 
-            channelData[sample] = mixed;
+            // --- Compressor ---
+            mixed = simpleComp.processSample(mixed, ch);
+
+            channelData[i] = mixed;
         }
     }
 
-    // --- Downsample ---
+    //==================================================
+    // STEP 5: ANTI-ALIASING FILTER BEFORE DOWNSAMPLE
+    //==================================================
+    // Add a gentle lowpass before downsampling to prevent aliasing
+    const float antiAliasCutoff = 18000.0f; // Hz (below Nyquist of original rate)
+    const float antiAliasAlpha = std::exp(-2.0f * juce::MathConstants<float>::pi * 
+                                         antiAliasCutoff / (float)osRate);
+    
+    for (int ch = 0; ch < totalNumInputChannels; ++ch)
+    {
+        float* channelData = osBlock.getChannelPointer(ch);
+        static std::vector<float> prevSample(totalNumInputChannels, 0.0f);
+        
+        for (int i = 0; i < numSamples; ++i)
+        {
+            channelData[i] = prevSample[ch] + antiAliasAlpha * (channelData[i] - prevSample[ch]);
+            prevSample[ch] = channelData[i];
+        }
+    }
+
+    //==================================================
+    // STEP 6: DOWNSAMPLE
+    //==================================================
     oversampler.processSamplesDown(block);
 }
+
 
 
 
