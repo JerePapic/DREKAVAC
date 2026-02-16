@@ -1,5 +1,5 @@
 #include "PluginProcessor.h"
-#include "PluginEditor.h" // keep this include if your editor header uses the processor type
+#include "PluginEditor.h"
 
 // Helper to create parameter layout
 juce::AudioProcessorValueTreeState::ParameterLayout DREKAVACAudioProcessor::createParameterLayout()
@@ -12,7 +12,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DREKAVACAudioProcessor::crea
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f,
         juce::String(), juce::AudioProcessorParameter::genericParameter,
         [](float value, int) {
-            return juce::String((int)(value * 100.0f)) + "%"; // display as 0–100%
+            return juce::String((int)(value * 100.0f)) + "%"; // display 0–100%
         },
         [](const juce::String& text) {
             return text.upToFirstOccurrenceOf("%", false, false).getFloatValue() / 100.0f;
@@ -23,14 +23,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout DREKAVACAudioProcessor::crea
         "cutoff", "Cutoff",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.75f,
         juce::String(), juce::AudioProcessorParameter::genericParameter,
-        // Display function (shows Hz)
+        // Display function (Hz)
         [](float value, int) {
             const float minHz = 100.0f, maxHz = 8000.0f;
             const float exponent = 0.7f;
             float hz = minHz * std::pow(maxHz / minHz, std::pow(value, exponent));
             return juce::String((int)hz) + " Hz";
         },
-        // Text-to-value (parsing typed-in Hz values)
+        // Text2value (parsing Hz values)
         [](const juce::String& text) {
             const float minHz = 100.0f, maxHz = 8000.0f;
             const float exponent = 0.7f;
@@ -54,7 +54,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DREKAVACAudioProcessor::crea
 
 
 
-    // Flavor parameter (internal 0–1, displayed as -100% → +100%)
+    // Flavor (0–1 -> -100% - +100%)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "flavor", "Flavor",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f,
@@ -69,7 +69,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DREKAVACAudioProcessor::crea
         }
     ));
 
-    // Output gain (0–2, displayed as 0%–200%)
+    // Output gain (0–2 -> 0%–200%)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "output", "Output",
         juce::NormalisableRange<float>(0.0f, 2.0f), 1.0f,
@@ -83,7 +83,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout DREKAVACAudioProcessor::crea
         }
     ));
 
-    // Dry/Wet mix (0–1, displayed as 0%–100%)
+    // Dry/Wet mix (0–1 -> 0%–100%)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "drywet", "Dry/Wet",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f,
@@ -186,11 +186,11 @@ void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear(i, 0, buffer.getNumSamples());
 
-    // --- Upsample ---
+    //Upsample
     auto block = juce::dsp::AudioBlock<float>(buffer);
     auto oversampledBlock = oversampler.processSamplesUp(block);
 
-    // --- Get parameter values ---
+    //Get parameter values
     float drive = *parameters.getRawParameterValue("drive");
     float tone = *parameters.getRawParameterValue("tone");
     float distortion = *parameters.getRawParameterValue("distortion");
@@ -200,11 +200,11 @@ void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
     float outputGain = *parameters.getRawParameterValue("output");
     float drywet = *parameters.getRawParameterValue("drywet");
 
-    // --- Pre-calculate expensive operations ---
+    //Pre-calculate expensive operations
     float f = std::sin(flavor * juce::MathConstants<float>::halfPi);
     float w = std::sqrt(drywet);
 
-    // --- Update DSP modules ---
+    //Update DSP modules
     overdrive.setDrive(drive);
     overdrive.setTone(tone);
     toneProcessor.setParameters(tone, drive);
@@ -233,7 +233,7 @@ void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
 
             float parallel = odSample + distSample * (1.0f - f) + foldSample * f;
 
-            // --- Tone filtering ---
+            //Tone filtering
             float filtered = toneProcessor.processSample(parallel);
 
             float mixed = inputSample * (1.0f - w) + filtered * w;
@@ -245,7 +245,7 @@ void DREKAVACAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    // --- Downsample ---
+    //Downsample
     oversampler.processSamplesDown(block);
 }
 
@@ -268,7 +268,7 @@ void DREKAVACAudioProcessor::setStateInformation(const void* data, int sizeInByt
 }
 
 //==============================================================================
-// Simple preset functions (editor can call these)
+// Simple preset functions
 void DREKAVACAudioProcessor::savePresetToFile(const juce::File& file)
 {
     if (!file.hasFileExtension(".preset"))
@@ -320,4 +320,5 @@ bool DREKAVACAudioProcessor::hasEditor() const
 juce::AudioProcessorEditor* DREKAVACAudioProcessor::createEditor()
 {
     return new DREKAVACAudioProcessorEditor(*this);
+
 }
