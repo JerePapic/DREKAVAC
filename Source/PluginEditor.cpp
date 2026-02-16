@@ -1,20 +1,17 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-//==============================================================================
-// Constructor
 DREKAVACAudioProcessorEditor::DREKAVACAudioProcessorEditor(DREKAVACAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    // --- Global LookAndFeel (triangles + font) ---
+    //Global LookAndFeel
     customLAF = std::make_unique<CustomLookAndFeel>();
     outlinedButtonLAF = std::make_unique<OutlinedButtonLAF>();
     setLookAndFeel(customLAF.get());
 
-    // Load background image
     backgroundImage = juce::ImageCache::getFromMemory(BinaryData::Background_png, BinaryData::Background_pngSize);
 
-    // --- Sliders setup ---
+    //Slider setup
     auto setupSlider = [this](juce::Slider& slider, juce::Label& label,
         const juce::String& paramID, const juce::String& labelText,
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>& attachment)
@@ -37,11 +34,11 @@ DREKAVACAudioProcessorEditor::DREKAVACAudioProcessorEditor(DREKAVACAudioProcesso
     setupSlider(toneSlider, toneLabel, "tone", "Tone", toneAttachment);
     setupSlider(distortionSlider, distortionLabel, "distortion", "Distortion", distortionAttachment);
     setupSlider(cutoffSlider, cutoffLabel, "cutoff", "Cutoff", cutoffAttachment);
-    // Setup Fold slider separately to show 0–100%
+    
     foldSlider.setLookAndFeel(customLAF.get());
     foldSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     foldSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 20);
-    foldSlider.setRange(0.0, 100.0, 1.0);       // display 0–100%
+    foldSlider.setRange(0.0, 100.0, 1.0);       // display 0-100%
     addAndMakeVisible(foldSlider);
 
     foldLabel.setText("Fold", juce::dontSendNotification);
@@ -68,7 +65,7 @@ DREKAVACAudioProcessorEditor::DREKAVACAudioProcessorEditor(DREKAVACAudioProcesso
         { &drywetSlider, &drywetLabel }
     };
 
-    // --- Preset labels ---
+    //Preset labels
     presetTitleLabel.setText("PRESET", juce::dontSendNotification);
     presetTitleLabel.setJustificationType(juce::Justification::centred);
     presetTitleLabel.setFont(juce::Font("Gajraj One", 16.0f, juce::Font::plain));
@@ -81,7 +78,7 @@ DREKAVACAudioProcessorEditor::DREKAVACAudioProcessorEditor(DREKAVACAudioProcesso
     presetNameLabel.setColour(juce::Label::textColourId, juce::Colour(205, 70, 130));
     addAndMakeVisible(presetNameLabel);
 
-    // --- Save/Load buttons ---
+    //Save/Load buttons
     outlinedButtonLAF = std::make_unique<OutlinedButtonLAF>();
 
     saveButton.setButtonText("SAVE");
@@ -147,23 +144,20 @@ void DREKAVACAudioProcessorEditor::paint(juce::Graphics& g)
     else
         g.fillAll(juce::Colour(18, 18, 25));
 
-    // Border + rectangles
     g.setColour(juce::Colour(61, 57, 97));
     g.fillRect(0, 0, getWidth(), 60);
 
     g.fillRect(0, getHeight() - 60, getWidth(), 60);
     g.setColour(juce::Colour(205, 70, 130));
-    g.fillRect(0, 59, getWidth(), 2);                          // line below header
-    g.fillRect(0, getHeight() - 61, getWidth(), 2);            // line above footer
+    g.fillRect(0, 59, getWidth(), 2);
+    g.fillRect(0, getHeight() - 61, getWidth(), 2);
 
 
     g.drawRect(getLocalBounds(), 2.0f);
 
-    // --- Main title ---
     g.setFont(juce::Font("Gajraj One", 48.0f, juce::Font::plain));
     g.drawText("DREKAVAC", 0, 0, getWidth(), 60, juce::Justification::centred);
 
-    // --- Subtitle ---
     g.setColour(juce::Colour(232, 232, 232));
     g.setFont(juce::Font("Gajraj One", 24.0f, juce::Font::plain));
     g.drawText("DISTEK", 0, 40, getWidth(), 20, juce::Justification::centred);
@@ -192,7 +186,7 @@ void DREKAVACAudioProcessorEditor::resized()
         y += sliderHeight + spacing;
     }
 
-    // --- Footer area ---
+    //Footer
     auto footerTop = getHeight() - 60;
 
     presetTitleLabel.setBounds(10, footerTop + 5, 100, 20);
@@ -205,4 +199,5 @@ void DREKAVACAudioProcessorEditor::resized()
 
     saveButton.setBounds(rightX, footerTop + 5, buttonWidth, buttonHeight);
     loadButton.setBounds(rightX, footerTop + 5 + buttonHeight + buttonGap, buttonWidth, buttonHeight);
+
 }
