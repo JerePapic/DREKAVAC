@@ -3,8 +3,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-//==============================================================================
-// Custom LookAndFeel for outlined buttons
+//LookAndFeel for outlined buttons
 struct OutlinedButtonLAF : public juce::LookAndFeel_V4
 {
     void drawButtonBackground(juce::Graphics& g, juce::Button& button,
@@ -38,8 +37,7 @@ struct OutlinedButtonLAF : public juce::LookAndFeel_V4
     }
 };
 
-//==============================================================================
-// Custom LookAndFeel for plugin
+//LookAndFeel
 class CustomLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -68,7 +66,7 @@ public:
         const juce::Slider::SliderStyle style, juce::Slider& /*slider*/) override
     {
         // Draw track
-        g.setColour(juce::Colour(80, 80, 80)); // subtle grey for track
+        g.setColour(juce::Colour(80, 80, 80));
         if (style == juce::Slider::LinearHorizontal)
             g.fillRect(x, height / 2 - 2, width, 4);
         else
@@ -85,11 +83,11 @@ public:
         triangle.lineTo(sliderPos + handleWidth / 2.0f, centerY - handleHeight / 2.0f);
         triangle.closeSubPath();
 
-        // Fill color (DREKAVAC title color)
+        // Fill color (title)
         g.setColour(juce::Colour(205, 70, 130));
         g.fillPath(triangle);
 
-        // Outline color (white text color)
+        // Outline color (text)
         g.setColour(juce::Colour(232, 232, 232));
         g.strokePath(triangle, juce::PathStrokeType(2.0f));
     }
@@ -149,4 +147,5 @@ private:
     std::vector<SliderWithLabel> sliders;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DREKAVACAudioProcessorEditor)
+
 };
