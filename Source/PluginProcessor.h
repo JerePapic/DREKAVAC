@@ -3,11 +3,6 @@
 #include <JuceHeader.h>
 #include <juce_dsp/juce_dsp.h>
 
-//==============================================================================
-// Simple DSP helper classes (kept small and copy-paste friendly)
-
-//==============================================================================
-
 class ToneProcessor
 {
 public:
@@ -25,8 +20,8 @@ public:
         balance = juce::jlimit(0.0f, 1.0f, toneSlider);
 
         // Drive subtly affects filter pivot and resonance
-        modulatedPivot = pivotFreq + driveSlider * 100.0f; // pivot 1 kHz → ~2 kHz at max drive
-        modulatedQ = q + driveSlider * 0.05f;          // Q 0.707 → ~1.2 at max drive
+        modulatedPivot = pivotFreq + driveSlider * 100.0f; // pivot 1 kHz -> ~2 kHz at max drive
+        modulatedQ = q + driveSlider * 0.05f;          // Q 0.707 -> ~1.2 at max drive
 
         updateCoefficients();
     }
@@ -88,7 +83,7 @@ public:
         // soft clipping
         float y = std::tanh(x);
 
-        // simple one-pole lowpass for 'tone' (tone=0 darker, tone=1 brighter)
+        // 1 pole lowpass for tone (0 - darker, 1 - brighter)
         float cutoff = 200.0f + tone * 8000.0f; // 200..8200 Hz
         float RC = 1.0f / (2.0f * juce::MathConstants<float>::pi * cutoff);
         float dt = 1.0f / (float)sampleRate;
@@ -139,20 +134,20 @@ public:
 
     float processSample(float input)
     {
-        // --- Pre soft clipping ---
+        //Pre soft clipping
         float y = std::tanh(input * preGain);
 
-        // --- 4-pole lowpass (cutoff controlled by slider) ---
+        //4 pole lowpass
         for (auto& f : filters)
             y = f.processSample(y);
 
-        // --- Gentle one-pole post lowpass (~10 kHz) to reduce fizz ---
+        //1 pole post lowpass  @ ~10 kHz to reduce fizz
         const float postCutoff = 10000.0f; // Hz
         const float alpha = std::exp(-2.0f * juce::MathConstants<float>::pi * postCutoff / fs);
         y = postPrev + (1.0f - alpha) * (y - postPrev);
         postPrev = y;
 
-        // --- Final soft clipping for smooth output limiting ---
+        //Final soft clipping for smooth output limiting
         return std::tanh(y);
     }
 
@@ -163,7 +158,7 @@ private:
     double fs;
     float postPrev = 0.0f;
 
-    // 2x 2-pole lowpass for 4-pole response
+    // 2x 2 pole lowpass for 4 pole response
     std::array<juce::dsp::IIR::Filter<float>, 2> filters;
 
     void updateFilter()
@@ -189,7 +184,7 @@ public:
     float processSample(float input)
     {
         // Scale input with depth to get stronger folding at higher depths
-        float scaled = input * (1.0f + depth * 9.0f); // 1x → 10x
+        float scaled = input * (1.0f + depth * 9.0f); // 1x -> 10x
         float folded = std::sin(scaled * juce::MathConstants<float>::halfPi);
         folded = std::tanh(folded);
         return input * (1.0f - depth) + folded * depth;
@@ -224,7 +219,7 @@ public:
 
     float processSample(float input)
     {
-        // Simple one-pole envelope follower
+        // Simple 1 pole envelope follower
         float level = std::fabs(input);
         if (level > envelope)
             envelope = attackCoeff * (envelope - level) + level;
@@ -234,7 +229,7 @@ public:
         // Convert to dB
         float levelDb = linearToDb(envelope);
 
-        // Soft-knee gain reduction
+        // Soft knee gain reduction
         float gainDb = 0.0f;
         float lowerKnee = threshold - knee / 2.0f;
         float upperKnee = threshold + knee / 2.0f;
@@ -245,7 +240,7 @@ public:
         }
         else if (levelDb > lowerKnee)
         {
-            float x = (levelDb - lowerKnee) / knee; // 0 → 1
+            float x = (levelDb - lowerKnee) / knee; // 0 -> 1
             float smooth = x * x * (3.0f - 2.0f * x);    // S-curve
             gainDb = smooth * (threshold + (levelDb - threshold) / ratio - levelDb);
         }
@@ -332,11 +327,12 @@ private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::String currentPresetName{ "Default" };
 
-    // --- Oversampling ---
+    //Oversampling
     juce::dsp::Oversampling<float> oversampler{ 2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR };
 
-    // 2x oversampling, stereo
+    // 2x oversampling (stereo)
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DREKAVACAudioProcessor)
+
 };
